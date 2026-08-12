@@ -270,12 +270,22 @@ class MCPServer:
             }
             try:
                 detected = service.database.self_handles()
+                access_summary = service.access_summary()
                 result.update(
                     {
                         "database_readable": True,
                         "detected_self_handles": sorted(detected),
+                        **access_summary,
                     }
                 )
+                if access_summary["self_chat_count"] == 0:
+                    result["access_hint"] = (
+                        "No iMessage chat currently matches a detected or configured "
+                        "owner handle. Start a Messages self-chat addressed exactly "
+                        "to one of those handles, or configure the actual self alias "
+                        "with `config set-owners --detect --handle HANDLE`. Existing "
+                        "non-self chats remain denied by default."
+                    )
             except IMessageError as error:
                 result.update({"database_readable": False, "error": str(error)})
             return tool_payload(result)

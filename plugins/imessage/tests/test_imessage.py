@@ -109,8 +109,42 @@ class IMessageTestCase(unittest.TestCase):
     def test_default_policy_allows_only_imessage_self_chat(self) -> None:
         chats = self.service.list_chats(20)
         self.assertEqual(["iMessage;-;me@example.com"], [chat["chat_id"] for chat in chats])
+        self.assertEqual(
+            {"authorized_chat_count": 1, "self_chat_count": 1},
+            self.service.access_summary(),
+        )
         with self.assertRaises(AccessDeniedError):
             self.service.authorized_chat("SMS;-;me@example.com")
+
+    def test_configured_self_alias_reloads_without_server_restart(self) -> None:
+        with sqlite3.connect(self.database_path) as connection:
+            connection.execute(
+                "INSERT INTO handle VALUES (5, 'alias@example.com', 'iMessage')"
+            )
+            connection.execute(
+                """
+                INSERT INTO chat VALUES
+                    (5, 'iMessage;-;alias@example.com', 'alias@example.com', '',
+                     45, 'iMessage')
+                """
+            )
+            connection.execute("INSERT INTO chat_handle_join VALUES (5, 5)")
+
+        self.assertNotIn(
+            "iMessage;-;alias@example.com",
+            {chat["chat_id"] for chat in self.service.list_chats(20)},
+        )
+        self.save(
+            AccessPolicy(
+                owner_handles=frozenset({"alias@example.com"}),
+                allowed_handles=frozenset(),
+                allowed_groups={},
+            )
+        )
+        self.assertIn(
+            "iMessage;-;alias@example.com",
+            {chat["chat_id"] for chat in self.service.list_chats(20)},
+        )
 
     def test_direct_and_group_access_require_explicit_exact_allowlists(self) -> None:
         group = GroupAccess(
@@ -281,6 +315,27 @@ class IMessageTestCase(unittest.TestCase):
         )
         self.assertTrue(denied["result"]["isError"])
         self.assertIn("AccessDeniedError", denied["result"]["content"][0]["text"])
+
+    def test_status_explains_when_no_self_chat_matches_owner(self) -> None:
+        with sqlite3.connect(self.database_path) as connection:
+            connection.execute("DELETE FROM chat_message_join WHERE chat_id = 1")
+            connection.execute("DELETE FROM chat_handle_join WHERE chat_id = 1")
+            connection.execute("DELETE FROM chat WHERE ROWID = 1")
+
+        server = MCPServer(lambda: self.service)
+        response = server.dispatch(
+            {
+                "jsonrpc": "2.0",
+                "id": 3,
+                "method": "tools/call",
+                "params": {"name": "imessage_status", "arguments": {}},
+            }
+        )
+        result = response["result"]["structuredContent"]["result"]
+        self.assertTrue(result["database_readable"])
+        self.assertEqual(0, result["self_chat_count"])
+        self.assertEqual(0, result["authorized_chat_count"])
+        self.assertIn("No iMessage chat currently matches", result["access_hint"])
 
     def test_attributed_body_parser_rejects_invalid_payloads(self) -> None:
         self.assertEqual(

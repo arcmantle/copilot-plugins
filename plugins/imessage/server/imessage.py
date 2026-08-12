@@ -611,16 +611,35 @@ class IMessageService:
         return policy.allow_sms_rcs and services <= SAFE_SERVICES | OPTIONAL_SERVICES
 
     @classmethod
+    def is_self_chat(cls, chat: Chat, policy: AccessPolicy) -> bool:
+        participants = frozenset(chat.participants)
+        return (
+            bool(participants)
+            and participants <= policy.owner_handles
+            and cls.service_allowed(chat, policy)
+        )
+
+    @classmethod
     def chat_allowed(cls, chat: Chat, policy: AccessPolicy) -> bool:
         if not cls.service_allowed(chat, policy):
             return False
         participants = frozenset(chat.participants)
-        if participants and participants <= policy.owner_handles:
+        if cls.is_self_chat(chat, policy):
             return True
         if chat.is_group:
             group = policy.allowed_groups.get(chat.guid)
             return group is not None and frozenset(group.participants) == participants
         return len(participants) == 1 and participants <= policy.allowed_handles
+
+    def access_summary(self) -> dict[str, int]:
+        policy = self.effective_policy()
+        chats = self.database.list_chats(scan_limit=None)
+        return {
+            "authorized_chat_count": sum(
+                self.chat_allowed(chat, policy) for chat in chats
+            ),
+            "self_chat_count": sum(self.is_self_chat(chat, policy) for chat in chats),
+        }
 
     def authorized_chat(self, guid: str) -> Chat:
         chat = self.database.get_chat(guid)

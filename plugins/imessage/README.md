@@ -66,6 +66,12 @@ launches; the status tool pins the active path in its helper command.
 
 Ask Copilot to "configure iMessage access." The `imessage_status` tool reports
 the exact configuration path and helper command for the installed copy.
+It also reports `self_chat_count` and `authorized_chat_count`. If both are zero,
+the policy is live but no chat participant matches a detected/configured owner
+handle. Start a self-chat addressed exactly to a detected handle, configure the
+actual self alias, or explicitly allow a trusted direct handle. Policy and
+database changes are read on every tool call; restarting Copilot is unnecessary
+unless macOS permissions changed.
 
 For a source checkout, the equivalent commands are:
 
