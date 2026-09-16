@@ -393,7 +393,6 @@
         "repo": "arcmantle/agent-issues-plugin"
       },
       "description": "Agent Issues workflow skills, custom agent, and MCP tools.",
-      "version": "0.2.8",
       "author": {
         "name": "Agent Issues contributors"
       },
